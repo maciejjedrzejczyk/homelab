@@ -1,0 +1,88 @@
+# code-server — VS Code in the browser with Docker CLI access.
+# https://github.com/linuxserver/docker-code-server
+
+name: vscode
+
+services:
+  code-server:
+    image: lscr.io/linuxserver/code-server:4.121.0
+
+    restart: unless-stopped
+
+    # Note: no `init: true` here — LinuxServer images use s6-overlay as their
+    # own init system and require being PID 1.
+
+    # Hardening — relaxed compared to other stacks because code-server is a
+    # development tool that needs package installation and full terminal access.
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - vscode
+
+    ports:
+      - "${VSCODE_PORT:-17425}:8443"
+
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Warsaw}
+      PASSWORD_FILE: /run/secrets/vscode_password
+      SUDO_PASSWORD_FILE: /run/secrets/vscode_sudo_password
+      PROXY_DOMAIN: ${VSCODE_PROXY_DOMAIN:-}
+      DEFAULT_WORKSPACE: /config/workspace
+
+    volumes:
+      - vscode:/config
+      - ${VSCODE_WORKSPACE:-/srv/homelab}:/config/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./custom-cont-init.d:/custom-cont-init.d:ro
+
+    group_add:
+      - "${DOCKER_GID:-1}"
+
+    secrets:
+      - vscode_password
+      - vscode_sudo_password
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:8443/healthz || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          memory: 256M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  vscode:
+    name: vscode
+    external: true
+
+networks:
+  vscode:
+    name: vscode
+    external: true
+
+secrets:
+  vscode_password:
+    file: ./secrets/password
+  vscode_sudo_password:
+    file: ./secrets/sudo_password

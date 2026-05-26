@@ -38,12 +38,14 @@ conventions, secrets management, and the full catalog.
 | [icloudpd](docker-compose/icloudpd/) | iCloud Photos downloader | — |
 | [immich](docker-compose/immich/) | Photo & video library with ML | 17426 |
 | [kuma](docker-compose/kuma/) | Uptime monitoring | 17410 |
+| [nextcloud](docker-compose/nextcloud/) | File sync & collaboration platform | 17411 |
 | [nginx-proxy-manager](docker-compose/nginx-proxy-manager/) | Reverse proxy + Let's Encrypt | 80/443/17413 |
 | [pihole-unbound](docker-compose/pihole-unbound/) | DNS ad-blocking + recursive resolver | 53/17418 |
 | [portainer](docker-compose/portainer/) | Docker management UI | 17402 |
 | [privatebin](docker-compose/privatebin/) | Encrypted pastebin | 17420 |
 | [signal-cli](docker-compose/signal-cli/) | Signal REST API gateway | 17424 |
 | [vaultwarden](docker-compose/vaultwarden/) | Bitwarden-compatible password vault | 17421 |
+| [vscode](docker-compose/vscode/) | VS Code in the browser (code-server) | 17425 |
 
 ## Scripts
 

@@ -1,0 +1,126 @@
+# Nextcloud — self-hosted file sync and collaboration platform.
+# https://github.com/linuxserver/docker-nextcloud
+
+name: nextcloud
+
+services:
+  nextcloud-app:
+    image: lscr.io/linuxserver/nextcloud:30.0.6
+
+    restart: unless-stopped
+
+    # Note: no `init: true` — LinuxServer images use s6-overlay as PID 1.
+
+    security_opt:
+      - no-new-privileges:true
+
+    depends_on:
+      nextcloud-db:
+        condition: service_healthy
+
+    networks:
+      - nextcloud
+
+    ports:
+      - "${NEXTCLOUD_PORT:-17411}:443"
+
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Warsaw}
+      MYSQL_HOST: nextcloud-db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - nextcloud-config:/config
+      - ${NEXTCLOUD_DATA_PATH:-/srv/nextcloud/data}:/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fskS https://127.0.0.1:443/status.php | grep -q '\"installed\":true' || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 256M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+  nextcloud-db:
+    image: lscr.io/linuxserver/mariadb:11.4.5
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - nextcloud
+
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Warsaw}
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - nextcloud-db:/config
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "mysqladmin ping -h localhost --silent || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  nextcloud-config:
+    name: nextcloud-config
+    external: true
+  nextcloud-db:
+    name: nextcloud-db
+    external: true
+
+networks:
+  nextcloud:
+    name: nextcloud
+    external: true
