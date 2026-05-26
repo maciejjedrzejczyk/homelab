@@ -111,11 +111,11 @@ if [ -n "$MISSING" ]; then
 
       # Build the YAML snippet
       SNIPPET="    - ${display}:
-        href: http://192.168.0.122:${port}
+        href: http://\${HOST_IP:-127.0.0.1}:${port}
         description: ${display}
         server: my-docker
         container: ${c}
-        siteMonitor: http://192.168.0.122:${port}
+        siteMonitor: http://\${HOST_IP:-127.0.0.1}:${port}
         icon: docker.svg"
 
       # Append under the matching section

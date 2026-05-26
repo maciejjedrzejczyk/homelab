@@ -1,6 +1,6 @@
 # homelab
 
-Self-hosted services running on a single Docker host (Mac Studio M1 Max).
+Self-hosted services running on a single Docker host.
 This repository contains the Docker Compose definitions, operational scripts,
 and documentation for all stacks.
 
