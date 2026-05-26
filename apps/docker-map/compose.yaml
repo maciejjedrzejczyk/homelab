@@ -1,0 +1,41 @@
+name: docker-map
+
+services:
+  docker-map:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${DOCKER_MAP_PORT:-3009}:3009"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${COMPOSE_ROOT:-../../docker-compose}:/compose:ro
+    environment:
+      PORT: "3009"
+      DOCKER_SOCKET: /var/run/docker.sock
+      COMPOSE_ROOT: /compose
+      NPM_API: ${NPM_API:-http://nginx-proxy-manager:81}
+      NPM_EMAIL: ${NPM_EMAIL:-}
+      NPM_PASSWORD: ${NPM_PASSWORD:-}
+    networks:
+      - nginx-proxy-manager
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  nginx-proxy-manager:
+    name: nginx-proxy-manager
+    external: true

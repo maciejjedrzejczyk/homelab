@@ -1,0 +1,63 @@
+# Uptime Kuma — self-hosted uptime monitoring.
+# https://github.com/louislam/uptime-kuma
+
+name: kuma
+
+services:
+  kuma:
+    image: louislam/uptime-kuma:2.3.2@sha256:9aeb4e51d038047f414309c77a1af553281ca535723cb88907d907269d0a908e
+
+    restart: unless-stopped
+    init: true
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - kuma
+
+    ports:
+      - "${KUMA_HOST_PORT:-17410}:3001"
+
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+
+    volumes:
+      - kuma:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:3001/ || exit 1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  kuma:
+    name: kuma
+    external: true
+
+networks:
+  kuma:
+    name: kuma
+    external: true

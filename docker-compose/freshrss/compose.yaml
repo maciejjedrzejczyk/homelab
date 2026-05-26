@@ -1,0 +1,71 @@
+# FreshRSS — self-hosted RSS feed reader.
+# https://github.com/FreshRSS/FreshRSS
+
+name: freshrss
+
+services:
+  freshrss:
+    image: lscr.io/linuxserver/freshrss:1.29.1@sha256:0a06fea79885fa194905d80b3b94a0f2e242bf81bdd3d810ffc50b688be8e697
+
+    restart: unless-stopped
+
+    # LinuxServer images use s6-overlay; do not set init: true.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - freshrss
+
+    ports:
+      - "${FRESHRSS_HOST_PORT:-17406}:80"
+
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Warsaw}
+
+    volumes:
+      - freshrss:/config
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:80/i/ || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  freshrss:
+    name: freshrss
+    external: true
+
+networks:
+  freshrss:
+    name: freshrss
+    external: true

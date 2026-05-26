@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Map</title>
+  <script src="https://unpkg.com/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; }
+    #toolbar { padding: 10px 16px; background: #16213e; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #0f3460; flex-wrap: wrap; }
+    #toolbar h1 { font-size: 16px; color: #e94560; white-space: nowrap; }
+    #search { padding: 6px 12px; border: 1px solid #0f3460; background: #1a1a2e; color: #eee; border-radius: 4px; font-size: 13px; width: 200px; }
+    #search::placeholder { color: #666; }
+    .filters { display: flex; gap: 3px; flex-wrap: wrap; }
+    .filters button { padding: 4px 10px; border: 1px solid #0f3460; background: #1a1a2e; color: #eee; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .filters button:hover { background: #0f3460; }
+    .filters button.active { background: #e94560; border-color: #e94560; }
+    #status { margin-left: auto; font-size: 11px; color: #666; display: flex; align-items: center; gap: 6px; }
+    #status .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+    #status .dot.live { background: #0f9d58; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    #cy { flex: 1; }
+    #info { position: absolute; bottom: 20px; right: 20px; background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 14px; max-width: 340px; font-size: 12px; display: none; max-height: 60vh; overflow-y: auto; }
+    #info h3 { color: #e94560; margin-bottom: 6px; font-size: 14px; }
+    #info .field { margin: 3px 0; }
+    #info .label { color: #888; }
+    #info .badge { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+    .badge-running { background: #0f9d582a; color: #0f9d58; }
+    .badge-exited { background: #e945602a; color: #e94560; }
+    .badge-healthy { background: #0f9d582a; color: #0f9d58; }
+    .badge-unhealthy { background: #ff70432a; color: #ff7043; }
+    .badge-update { background: #f4b4002a; color: #f4b400; }
+    #legend { position: absolute; top: 60px; left: 16px; background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 10px; font-size: 11px; }
+    #legend .item { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+    #legend .swatch { width: 12px; height: 12px; border-radius: 2px; }
+    #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #1a1a2e; z-index: 10; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <h1>🐳 Docker Map</h1>
+    <input id="search" type="text" placeholder="Search nodes..." aria-label="Search nodes">
+    <div class="filters">
+      <button class="filter active" data-type="all">All</button>
+      <button class="filter" data-type="container">Containers</button>
+      <button class="filter" data-type="network">Networks</button>
+      <button class="filter" data-type="volume">Volumes</button>
+      <button class="filter" data-type="domain">Domains</button>
+      <button class="filter" data-type="env">Env</button>
+      <button class="filter" data-type="port">Ports</button>
+      <button class="filter" data-type="file">Files</button>
+    </div>
+    <div id="status"><span class="dot"></span><span class="text">Connecting...</span></div>
+  </div>
+  <div id="cy"></div>
+  <div id="loading">Connecting to Docker host...</div>
+  <div id="info"></div>
+  <div id="legend">
+    <div class="item"><span class="swatch" style="background:#e94560"></span> Project</div>
+    <div class="item"><span class="swatch" style="background:#0f9d58"></span> Container</div>
+    <div class="item"><span class="swatch" style="background:#f4b400"></span> Network</div>
+    <div class="item"><span class="swatch" style="background:#4285f4"></span> Volume</div>
+    <div class="item"><span class="swatch" style="background:#26c6da"></span> Port</div>
+    <div class="item"><span class="swatch" style="background:#ab47bc"></span> Env Var</div>
+    <div class="item"><span class="swatch" style="background:#ff7043"></span> Secret</div>
+    <div class="item"><span class="swatch" style="background:#8d6e63"></span> File</div>
+    <div class="item"><span class="swatch" style="background:#00bfa5"></span> Domain</div>
+  </div>
+
+  <script>
+    const TYPE_STYLES = {
+      project:   { color: '#e94560', shape: 'round-rectangle', size: 50 },
+      container: { color: '#0f9d58', shape: 'ellipse', size: 40 },
+      volume:    { color: '#4285f4', shape: 'barrel', size: 28 },
+      network:   { color: '#f4b400', shape: 'diamond', size: 32 },
+      env:       { color: '#ab47bc', shape: 'tag', size: 22 },
+      secret:    { color: '#ff7043', shape: 'star', size: 26 },
+      port:      { color: '#26c6da', shape: 'pentagon', size: 24 },
+      file:      { color: '#8d6e63', shape: 'rectangle', size: 24 },
+      domain:    { color: '#00bfa5', shape: 'round-rectangle', size: 34 },
+    };
+
+    const EDGE_COLORS = {
+      contains: '#e9456066', mounts: '#4285f4', connected_to: '#f4b400',
+      uses_env: '#ab47bc66', uses_secret: '#ff704366', exposes: '#26c6da',
+      reads_from: '#8d6e63', loads_env_from: '#8d6e6366', bind_mount: '#8d6e63',
+      routes_to: '#00bfa5', proxies: '#00bfa566',
+    };
+
+    let cy, ws, currentFilter = 'all';
+
+    function initCytoscape(graph) {
+      const elements = [
+        // Parent nodes for project grouping
+        ...graph.nodes.filter(n => n.type === 'project').map(n => ({
+          data: { id: n.id, label: n.label, type: n.type, ...n.data },
+        })),
+        // Child nodes with parent
+        ...graph.nodes.filter(n => n.type !== 'project').map(n => {
+          const d = { id: n.id, label: n.label, type: n.type, ...n.data };
+          if (n.type === 'container' && n.data?.project) d.parent = `project:${n.data.project}`;
+          return { data: d };
+        }),
+        ...graph.edges.map((e, i) => ({
+          data: { id: `e${i}`, source: e.source, target: e.target, relation: e.relation },
+        })),
+      ];
+
+      if (cy) { cy.json({ elements }); runLayout(); return; }
+
+      cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements,
+        style: [
+          { selector: 'node', style: {
+            label: 'data(label)', 'text-valign': 'bottom', 'text-margin-y': 6, 'font-size': 10, color: '#ccc',
+            'background-color': n => TYPE_STYLES[n.data('type')]?.color || '#666',
+            shape: n => TYPE_STYLES[n.data('type')]?.shape || 'ellipse',
+            width: n => TYPE_STYLES[n.data('type')]?.size || 28,
+            height: n => TYPE_STYLES[n.data('type')]?.size || 28,
+            'border-width': n => {
+              if (n.data('health') === 'unhealthy') return 4;
+              if (n.data('updateAvailable')) return 4;
+              return 2;
+            },
+            'border-color': n => {
+              if (n.data('health') === 'unhealthy') return '#ff5252';
+              if (n.data('updateAvailable')) return '#f4b400';
+              if (n.data('state') === 'exited') return '#666';
+              return TYPE_STYLES[n.data('type')]?.color || '#666';
+            },
+            'background-opacity': n => n.data('state') === 'exited' ? 0.4 : 0.85,
+          }},
+          { selector: ':parent', style: {
+            'background-color': '#e9456010', 'border-color': '#e9456044', 'border-width': 2,
+            label: 'data(label)', 'text-valign': 'top', 'text-margin-y': -8,
+            'font-size': 12, color: '#e94560', 'font-weight': 'bold', shape: 'round-rectangle',
+            'padding': 20,
+          }},
+          { selector: 'edge', style: {
+            width: 1.5, 'line-color': e => EDGE_COLORS[e.data('relation')] || '#444',
+            'target-arrow-color': e => EDGE_COLORS[e.data('relation')] || '#444',
+            'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'arrow-scale': 0.7, opacity: 0.6,
+          }},
+          { selector: '.dimmed', style: { opacity: 0.1 } },
+          { selector: '.highlight', style: { 'border-width': 5, 'border-color': '#fff' } },
+        ],
+        layout: { name: 'preset' },
+        wheelSensitivity: 0.3,
+      });
+
+      runLayout();
+
+      cy.on('tap', 'node', e => {
+        if (e.target.isParent()) return;
+        cy.elements().addClass('dimmed');
+        e.target.closedNeighborhood().removeClass('dimmed');
+        showInfo(e.target);
+      });
+      cy.on('tap', e => {
+        if (e.target === cy) {
+          cy.elements().removeClass('dimmed').removeClass('highlight');
+          document.getElementById('info').style.display = 'none';
+        }
+      });
+    }
+
+    function runLayout() {
+      cy.layout({
+        name: 'cose', animate: false, nodeRepulsion: 12000,
+        idealEdgeLength: 80, gravity: 0.4, numIter: 400, nodeDimensionsIncludeLabels: true,
+      }).run();
+    }
+
+    function updateGraph(graph) {
+      initCytoscape(graph);
+      applyFilter(currentFilter);
+      document.getElementById('loading').style.display = 'none';
+    }
+
+    // --- WebSocket ---
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}`);
+      const dot = document.querySelector('#status .dot');
+      const text = document.querySelector('#status .text');
+
+      ws.onopen = () => { dot.classList.add('live'); text.textContent = 'Live'; };
+      ws.onclose = () => { dot.classList.remove('live'); text.textContent = 'Reconnecting...'; setTimeout(connectWS, 3000); };
+      ws.onerror = () => ws.close();
+      ws.onmessage = e => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'graph') updateGraph(msg.data);
+      };
+    }
+
+    // --- Search ---
+    document.getElementById('search').addEventListener('input', e => {
+      const q = e.target.value.toLowerCase().trim();
+      if (!cy) return;
+      cy.elements().removeClass('dimmed').removeClass('highlight');
+      if (!q) return;
+      const matched = cy.nodes().filter(n => n.data('label')?.toLowerCase().includes(q));
+      if (matched.length) {
+        cy.elements().addClass('dimmed');
+        matched.forEach(n => n.closedNeighborhood().removeClass('dimmed'));
+        matched.addClass('highlight');
+        cy.animate({ fit: { eles: matched, padding: 80 } }, { duration: 300 });
+      }
+    });
+
+    // --- Filters ---
+    function applyFilter(type) {
+      currentFilter = type;
+      if (!cy) return;
+      if (type === 'all') { cy.elements().show(); }
+      else {
+        cy.nodes().forEach(n => {
+          const nt = n.data('type');
+          if (nt === type || nt === 'project' || (type === 'container' && nt === 'domain')) n.show();
+          else n.hide();
+        });
+        cy.edges().forEach(e => {
+          (e.source().visible() && e.target().visible()) ? e.show() : e.hide();
+        });
+      }
+    }
+
+    document.querySelectorAll('.filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilter(btn.dataset.type);
+      });
+    });
+
+    // --- Info Panel ---
+    function showInfo(node) {
+      const info = document.getElementById('info');
+      const d = node.data();
+      let html = `<h3>${d.label}</h3>`;
+      html += `<div class="field"><span class="label">Type:</span> ${d.type}</div>`;
+      if (d.image) html += `<div class="field"><span class="label">Image:</span> ${d.image}</div>`;
+      if (d.state) html += `<div class="field"><span class="label">State:</span> <span class="badge badge-${d.state}">${d.state}</span></div>`;
+      if (d.health && d.health !== d.state) html += `<div class="field"><span class="label">Health:</span> <span class="badge badge-${d.health}">${d.health}</span></div>`;
+      if (d.updateAvailable) html += `<div class="field"><span class="badge badge-update">⬆ Update available</span></div>`;
+      if (d.localDigest) html += `<div class="field"><span class="label">Digest:</span> ${d.localDigest}…</div>`;
+      if (d.status) html += `<div class="field"><span class="label">Status:</span> ${d.status}</div>`;
+      if (d.path) html += `<div class="field"><span class="label">Path:</span> ${d.path}</div>`;
+      if (d.ssl) html += `<div class="field"><span class="label">SSL:</span> forced</div>`;
+
+      const conns = node.connectedEdges().map(e => {
+        const other = e.source().id() === node.id() ? e.target() : e.source();
+        return `<span class="label">${e.data('relation')}</span> → ${other.data('label')}`;
+      });
+      if (conns.length) html += `<div class="field" style="margin-top:8px"><strong>Connections (${conns.length}):</strong><br>${conns.join('<br>')}</div>`;
+      info.innerHTML = html;
+      info.style.display = 'block';
+    }
+
+    connectWS();
+  </script>
+</body>
+</html>

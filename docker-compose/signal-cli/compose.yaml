@@ -1,0 +1,71 @@
+# Signal-CLI REST API — Signal messaging gateway.
+# https://github.com/bbernhard/signal-cli-rest-api
+
+name: signal-cli
+
+services:
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:0.99@sha256:96578363477d97cb1d8da303791b2ad686b374a255fce4d78c7c6f00ef56cba8
+
+    restart: unless-stopped
+    init: true
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - signal-cli
+
+    ports:
+      - "${SIGNAL_HOST_PORT:-17424}:8080"
+
+    environment:
+      MODE: normal
+      TZ: ${TZ:-Europe/Warsaw}
+
+    volumes:
+      - signal-cli:/home/.local/share/signal-cli
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:8080/v1/about || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  signal-cli:
+    name: signal-cli
+    external: true
+
+networks:
+  signal-cli:
+    name: signal-cli
+    external: true

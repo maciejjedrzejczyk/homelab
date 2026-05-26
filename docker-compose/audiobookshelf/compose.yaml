@@ -1,0 +1,71 @@
+# Audiobookshelf — self-hosted audiobook and podcast server.
+# https://github.com/advplyr/audiobookshelf
+
+name: audiobookshelf
+
+services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:2.35.0@sha256:89276ff2e0b3d2f07dd334b641f27a34ab7f02e1047c60b7b8a30126cb0813a5
+
+    restart: unless-stopped
+    init: true
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - audiobookshelf
+
+    ports:
+      - "${ABS_HOST_PORT:-17401}:80"
+
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+
+    volumes:
+      - audiobookshelf-config:/config
+      - audiobookshelf-metadata:/metadata
+      - ${ABS_IMPORT_PATH:-/tmp/abs-import}:/imported:ro
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:80/healthcheck',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 128M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  audiobookshelf-config:
+    name: audiobookshelf
+    external: true
+  audiobookshelf-metadata:
+    name: audiobookshelf-metadata
+    external: true
+
+networks:
+  audiobookshelf:
+    name: audiobookshelf
+    external: true

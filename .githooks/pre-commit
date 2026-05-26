@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — blocks commits containing likely secrets or
+# personal data. Activate once with:
+#   git config core.hooksPath .githooks
+set -uo pipefail
+
+# Files allowed to reference certain patterns without triggering the hook.
+# Keep this list tight — only files that legitimately MUST contain these
+# patterns as documentation or configuration examples.
+is_allowed() {
+  case "$1" in
+    .githooks/pre-commit) return 0 ;;       # this file itself
+    SECURITY.md) return 0 ;;                # documents the rules
+    .gitignore) return 0 ;;                 # mentions patterns
+    */secrets/*.example) return 0 ;;        # secret format examples
+    *package-lock.json) return 0 ;;         # version strings match IP regex
+    */unbound.conf) return 0 ;;             # RFC1918 ranges are required
+    *) return 1 ;;
+  esac
+}
+
+# Get staged file list (Added/Copied/Modified/Renamed only).
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$STAGED" ] && exit 0
+
+FOUND=""
+
+for file in $STAGED; do
+  is_allowed "$file" && continue
+
+  # Get the full staged content of the file.
+  ADDED_LINES=$(git show ":$file" 2>/dev/null || true)
+  [ -z "$ADDED_LINES" ] && continue
+
+  HITS=""
+
+  # --- Credential patterns ---
+  if echo "$ADDED_LINES" | grep -q 'argon2id'; then
+    HITS="${HITS}  - argon2id hash\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'sk-[a-zA-Z0-9]'; then
+    HITS="${HITS}  - API key pattern (sk-...)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'ghp_'; then
+    HITS="${HITS}  - GitHub PAT (ghp_...)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'ghs_'; then
+    HITS="${HITS}  - GitHub App token (ghs_...)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'glpat-'; then
+    HITS="${HITS}  - GitLab PAT (glpat-...)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'AKIA[0-9A-Z]'; then
+    HITS="${HITS}  - AWS access key (AKIA...)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'xox[bpras]-'; then
+    HITS="${HITS}  - Slack token (xox*-...)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'hooks\.slack\.com/services/'; then
+    HITS="${HITS}  - Slack webhook URL\n"
+  fi
+  if echo "$ADDED_LINES" | grep -q 'hooks\.discord\.com/api/webhooks/'; then
+    HITS="${HITS}  - Discord webhook URL\n"
+  fi
+
+  # --- Personal identifiers (edit for your setup) ---
+  if echo "$ADDED_LINES" | grep -qi 'matanyahu'; then
+    HITS="${HITS}  - personal username (matanyahu)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -qi 'maciejjedrzejczyk'; then
+    # Allow in README files (public GitHub username)
+    case "$file" in
+      */README.md|README.md) ;;
+      *) HITS="${HITS}  - personal name\n" ;;
+    esac
+  fi
+  if echo "$ADDED_LINES" | grep -qi 'mxjlab'; then
+    HITS="${HITS}  - personal subdomain (mxjlab)\n"
+  fi
+  if echo "$ADDED_LINES" | grep -qi 'protonmail'; then
+    HITS="${HITS}  - personal email domain\n"
+  fi
+  if echo "$ADDED_LINES" | grep -qi 'duckdns\.org'; then
+    # Allow in .env.example (explaining what the variable is for)
+    case "$file" in
+      *.env.example) ;;
+      *) HITS="${HITS}  - DuckDNS domain\n" ;;
+    esac
+  fi
+
+  # --- Private network IPs (only in non-config compose files) ---
+  # Skip .env.example and README files for IP checks since they use
+  # placeholder IPs like 192.168.x.x as examples.
+  case "$file" in
+    *.env.example|*/README.md|scripts/*) ;;
+    *)
+      if echo "$ADDED_LINES" | grep -q '192\.168\.[0-9]'; then
+        HITS="${HITS}  - private LAN IP (192.168.x.x)\n"
+      fi
+      ;;
+  esac
+
+  if [ -n "$HITS" ]; then
+    FOUND="${FOUND}\n  ${file}:\n${HITS}"
+  fi
+done
+
+if [ -z "$FOUND" ]; then
+  exit 0
+fi
+
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  COMMIT BLOCKED — potential secret or personal data found  ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+printf "%b\n" "$FOUND"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "If this is a false positive, commit with: git commit --no-verify"
+exit 1

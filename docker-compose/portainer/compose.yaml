@@ -1,0 +1,55 @@
+# Portainer CE — Docker management UI.
+# https://github.com/portainer/portainer
+
+name: portainer
+
+services:
+  portainer:
+    image: portainer/portainer-ce:2.42.0@sha256:c3c919ec68d130cbcb837693420592b91afd320b28b492c16c84ec5561bbf095
+
+    restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - portainer
+
+    ports:
+      - "${PORTAINER_HTTPS_PORT:-17402}:9443"
+
+    command: --http-enabled
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer:/data
+
+    # No healthcheck — Portainer uses a minimal image with no shell.
+    # Verify via: curl -fsk https://127.0.0.1:${PORTAINER_HTTPS_PORT}/
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  portainer:
+    name: portainer
+    external: true
+
+networks:
+  portainer:
+    name: portainer
+    external: true

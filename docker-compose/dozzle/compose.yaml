@@ -1,0 +1,63 @@
+# Dozzle — web-based Docker container log viewer.
+# https://github.com/amir20/dozzle
+
+name: dozzle
+
+services:
+  dozzle:
+    image: amir20/dozzle:v10.6.0@sha256:345aa7fc8724d4086e93d1cafdb91d1e19ae6d6a7b1d652814dc30b3b03cbc82
+
+    restart: unless-stopped
+    init: true
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - dozzle
+
+    ports:
+      - "${DOZZLE_HOST_PORT:-17404}:8080"
+
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dozzle-data:/data
+
+    healthcheck:
+      test:
+        - CMD
+        - /dozzle
+        - healthcheck
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  dozzle-data:
+    name: dozzle-data
+
+networks:
+  dozzle:
+    name: dozzle
+    external: true

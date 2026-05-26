@@ -1,0 +1,61 @@
+# DuckDNS — dynamic DNS updater.
+# https://github.com/linuxserver/docker-duckdns
+
+name: duckdns
+
+services:
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest@sha256:903e0085aef531c68f1ad27c055ac40c4f76f46b088ada755022140e20f876f3
+
+    restart: unless-stopped
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - duckdns
+
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Europe/Warsaw}
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAINS}
+      TOKEN: ${DUCKDNS_TOKEN}
+      LOG_FILE: "true"
+
+    volumes:
+      - duckdns:/config
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+        reservations:
+          memory: 16M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  duckdns:
+    name: duckdns
+    external: true
+
+networks:
+  duckdns:
+    name: duckdns
+    external: true

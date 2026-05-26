@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------
+# Secrets and environment files
+#
+# All real .env files are ignored by default. Use .env.example as the
+# committed template; copy it to .env locally and fill in real values.
+# ---------------------------------------------------------------------------
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+!**/.env.*.example
+
+# ---------------------------------------------------------------------------
+# Per-stack secret files
+#
+# Each stack that needs Docker Compose `secrets:` keeps its files in a
+# `secrets/` directory. The directory is tracked via .gitkeep, but the
+# actual secret material is not.
+# ---------------------------------------------------------------------------
+**/secrets/*
+!**/secrets/.gitkeep
+!**/secrets/*.example
+!**/secrets/README.md
+
+# ---------------------------------------------------------------------------
+# Keys, certificates, credentials
+# ---------------------------------------------------------------------------
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.gpg
+*.asc
+.netrc
+
+# ---------------------------------------------------------------------------
+# Local Docker Compose overrides
+#
+# `compose.override.yaml` is loaded automatically by Docker Compose and is
+# used for host-specific tweaks that should never be committed.
+# ---------------------------------------------------------------------------
+**/compose.override.yaml
+**/compose.override.yml
+**/docker-compose.override.yaml
+**/docker-compose.override.yml
+
+# ---------------------------------------------------------------------------
+# Backups produced by scripts/docker-backup.sh
+# ---------------------------------------------------------------------------
+*.tar
+*.tar.gz
+*.tgz
+*.tar.zst
+*.tar.xz
+*-backup/
+backups/
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+logs/
+
+# ---------------------------------------------------------------------------
+# OS / editor / IDE
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+.history/
+.fleet/
+*.iml
+
+# ---------------------------------------------------------------------------
+# Python / Node leftovers (in case any tooling lands here later)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
