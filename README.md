@@ -53,6 +53,7 @@ conventions, secrets management, and the full catalog.
 | --- | --- |
 | [`scripts/homelab.sh`](scripts/homelab.sh) | Start, stop, restart, delete, destroy stacks. Interactive menu or CLI. |
 | [`scripts/backup/`](scripts/backup/) | Per-stack volume + config backup and restore with checksums. |
+| [`scripts/service-inventory/`](scripts/service-inventory/) | Generate full-stack service report (containers, proxies, DNS). |
 | [`scripts/update-images/`](scripts/update-images/) | Check for upstream image updates, bump versions, pull + restart. |
 | [`scripts/homepage-sync/`](scripts/homepage-sync/) | Compare running containers with Homepage config, add/remove entries. |
 

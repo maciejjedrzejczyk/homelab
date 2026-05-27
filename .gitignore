@@ -85,3 +85,6 @@ __pycache__/
 *.py[cod]
 .venv/
 node_modules/
+
+# Generated reports (contain network-specific data)
+reports/
