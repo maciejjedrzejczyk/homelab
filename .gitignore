@@ -88,3 +88,6 @@ node_modules/
 
 # Generated reports (contain network-specific data)
 reports/
+
+# Proxy manager credentials
+scripts/proxy-manager/config.env
