@@ -10,8 +10,6 @@ services:
     restart: unless-stopped
     init: true
 
-    cap_drop:
-      - ALL
     security_opt:
       - no-new-privileges:true
 
@@ -31,7 +29,7 @@ services:
       # For tighter security, replace with a docker-socket-proxy service.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Optional: local images directory for custom dashboard backgrounds.
-      - ${HOMEPAGE_IMAGES_PATH:-/dev/null}:/app/public/images:ro
+      - homepage-images:/app/public/images:ro
 
     healthcheck:
       test:
@@ -62,6 +60,9 @@ services:
 volumes:
   homepage:
     name: homepage
+    external: true
+  homepage-images:
+    name: homepage-images
     external: true
 
 networks:

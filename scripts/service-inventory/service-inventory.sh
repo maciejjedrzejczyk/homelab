@@ -16,7 +16,10 @@ PIHOLE_CONTAINER="pihole-unbound"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 OUTPUT_DIR="${REPO_ROOT}/reports"
-OUTPUT_FILE="${OUTPUT_DIR}/service-inventory-$(date +%Y%m%d-%H%M%S).md"
+OUTPUT_FILE=""
+FORMAT="markdown"
+DIFF_MODE=false
+DIFF_AGAINST=""
 # Regex pattern for non-container services to detect (extend as needed)
 SERVICE_FILTER="(jellyfin|synergy|ollama|transmission|plex|radarr|sonarr|prowlarr)"
 
@@ -31,6 +34,8 @@ while [[ $# -gt 0 ]]; do
     --pihole-container) PIHOLE_CONTAINER="$2"; shift 2 ;;
     --output) OUTPUT_FILE="$2"; shift 2 ;;
     --filter) SERVICE_FILTER="$2"; shift 2 ;;
+    --format) FORMAT="$2"; shift 2 ;;
+    --diff) DIFF_MODE=true; DIFF_AGAINST="${2:-}"; shift; [ -n "$DIFF_AGAINST" ] && shift ;;
     --help)
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
@@ -40,8 +45,11 @@ while [[ $# -gt 0 ]]; do
       echo "  --no-pihole            Skip Pi-hole DNS entries"
       echo "  --nginx-container NAME Nginx proxy manager container name (default: nginx-proxy-manager)"
       echo "  --pihole-container NAME Pi-hole container name (default: pihole-unbound)"
-      echo "  --output FILE          Output file path (default: reports/service-inventory-TIMESTAMP.md)"
+      echo "  --output FILE          Output file path (default: reports/service-inventory-TIMESTAMP.{md|json})"
       echo "  --filter REGEX         Extended regex for non-container service names to detect"
+      echo "  --format FORMAT        Output format: markdown (default) or json"
+      echo "  --diff [FILE]          Compare against previous report and show changes."
+      echo "                         If FILE not specified, uses the most recent report."
       echo "  --help                 Show this help message"
       exit 0
       ;;
@@ -49,10 +57,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Set default output file based on format
+EXT="md"
+[ "$FORMAT" = "json" ] && EXT="json"
+[ -z "$OUTPUT_FILE" ] && OUTPUT_FILE="${OUTPUT_DIR}/service-inventory-$(date +%Y%m%d-%H%M%S).${EXT}"
+
+# JSON data collector (parallel to markdown output)
+JSON_CONTAINERS="[]"
+JSON_SERVICES="[]"
+JSON_NGINX="[]"
+JSON_DNS="[]"
+
 # Temporary files for data storage
 NGINX_DATA=$(mktemp)
 PIHOLE_DATA=$(mktemp)
-trap "rm -f $NGINX_DATA $PIHOLE_DATA" EXIT
+JSON_TMP=$(mktemp)
+trap "rm -f $NGINX_DATA $PIHOLE_DATA $JSON_TMP" EXIT
 
 # Function to map truncated service names to full names (extend as needed)
 map_service_name() {
@@ -287,6 +307,100 @@ fi
 if [ "$COLLECT_PIHOLE" = true ] && [ -f "$PIHOLE_DATA" ]; then
   pihole_count=$(wc -l < "$PIHOLE_DATA" | tr -d ' ')
   echo "- Total Pi-hole DNS Entries: $pihole_count" >> "$OUTPUT_FILE"
+fi
+
+# --- JSON Output ---
+if [ "$FORMAT" = "json" ]; then
+  # Collect container data as JSON
+  json_containers="[]"
+  if [ "$COLLECT_CONTAINERS" = true ]; then
+    json_containers=$(docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' | while IFS=$'\t' read -r name image status ports; do
+      ext=$(echo "$ports" | grep -oE '0\.0\.0\.0:[0-9]+' | cut -d: -f2 | sort -u | tr '\n' ',' | sed 's/,$//')
+      int=$(echo "$ports" | grep -oE '[0-9]+/tcp' | cut -d/ -f1 | sort -u | tr '\n' ',' | sed 's/,$//')
+      printf '{"name":"%s","image":"%s","status":"%s","external_ports":"%s","internal_ports":"%s"}\n' \
+        "$name" "$image" "$status" "$ext" "$int"
+    done | awk '{printf "%s%s", (NR>1?",":""), $0}')
+    json_containers="[${json_containers}]"
+  fi
+
+  # Collect nginx data as JSON
+  json_nginx="[]"
+  if [ "$COLLECT_NGINX" = true ] && [ -s "$NGINX_DATA" ]; then
+    json_nginx=$(while IFS='|' read -r domain target ssl port; do
+      printf '{"domain":"%s","target":"%s","ssl":"%s","port":"%s"}\n' "$domain" "$target" "$ssl" "$port"
+    done < "$NGINX_DATA" | awk '{printf "%s%s", (NR>1?",":""), $0}')
+    json_nginx="[${json_nginx}]"
+  fi
+
+  # Collect DNS data as JSON
+  json_dns="[]"
+  if [ "$COLLECT_PIHOLE" = true ] && [ -s "$PIHOLE_DATA" ]; then
+    json_dns=$(while IFS='|' read -r hostname ip; do
+      printf '{"hostname":"%s","ip":"%s"}\n' "$hostname" "$ip"
+    done < "$PIHOLE_DATA" | awk '{printf "%s%s", (NR>1?",":""), $0}')
+    json_dns="[${json_dns}]"
+  fi
+
+  # Write JSON report
+  cat > "$OUTPUT_FILE" << JSONEOF
+{
+  "generated": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "containers": ${json_containers},
+  "proxy_hosts": ${json_nginx},
+  "dns_entries": ${json_dns}
+}
+JSONEOF
+fi
+
+# --- Diff Mode ---
+if [ "$DIFF_MODE" = true ]; then
+  # Find the previous report to diff against
+  if [ -z "$DIFF_AGAINST" ]; then
+    DIFF_AGAINST=$(find "$OUTPUT_DIR" -name "service-inventory-*.$EXT" -not -name "$(basename "$OUTPUT_FILE")" | sort | tail -1)
+  fi
+
+  if [ -z "$DIFF_AGAINST" ] || [ ! -f "$DIFF_AGAINST" ]; then
+    echo ""
+    echo "⚠ No previous report found for diff. This is the first report."
+  else
+    echo ""
+    echo "━━━ Changes since $(basename "$DIFF_AGAINST") ━━━"
+
+    if [ "$FORMAT" = "json" ]; then
+      # JSON diff: compare container names
+      prev_containers=$(grep -oE '"name":"[^"]+"' "$DIFF_AGAINST" | sort)
+      curr_containers=$(grep -oE '"name":"[^"]+"' "$OUTPUT_FILE" | sort)
+      added=$(comm -13 <(echo "$prev_containers") <(echo "$curr_containers") | sed 's/"name":"//;s/"//')
+      removed=$(comm -23 <(echo "$prev_containers") <(echo "$curr_containers") | sed 's/"name":"//;s/"//')
+    else
+      # Markdown diff: compare container name column
+      prev_containers=$(grep -E '^\|[^|]+\|' "$DIFF_AGAINST" | grep -v '^\| Container\|^\|---' | awk -F'|' '{print $2}' | xargs -I{} echo "{}" | sort)
+      curr_containers=$(grep -E '^\|[^|]+\|' "$OUTPUT_FILE" | grep -v '^\| Container\|^\|---' | awk -F'|' '{print $2}' | xargs -I{} echo "{}" | sort)
+      added=$(comm -13 <(echo "$prev_containers") <(echo "$curr_containers"))
+      removed=$(comm -23 <(echo "$prev_containers") <(echo "$curr_containers"))
+    fi
+
+    if [ -n "$added" ]; then
+      echo ""
+      echo "  ✚ Added:"
+      echo "$added" | while read -r svc; do
+        [ -n "$svc" ] && echo "    + $svc"
+      done
+    fi
+
+    if [ -n "$removed" ]; then
+      echo ""
+      echo "  ✖ Removed:"
+      echo "$removed" | while read -r svc; do
+        [ -n "$svc" ] && echo "    - $svc"
+      done
+    fi
+
+    if [ -z "$added" ] && [ -z "$removed" ]; then
+      echo "  No changes detected."
+    fi
+    echo ""
+  fi
 fi
 
 echo ""

@@ -26,8 +26,11 @@ services:
       - "${IMMICH_HOST_PORT:-17426}:2283"
 
     volumes:
-      - ${UPLOAD_LOCATION}:/data
+      - immich-data:/data
       - /etc/localtime:/etc/localtime:ro
+      # Alternative: bind mount to host path for direct filesystem access.
+      # Requires the host directory to be readable by the container.
+      # - ${UPLOAD_LOCATION}:/data
 
     env_file:
       - .env
@@ -163,7 +166,9 @@ services:
       POSTGRES_INITDB_ARGS: "--data-checksums"
 
     volumes:
-      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+      - immich-db:/var/lib/postgresql/data
+      # Alternative: bind mount to host path for direct filesystem access.
+      # - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
 
     shm_size: 128mb
 
@@ -187,6 +192,12 @@ services:
 volumes:
   immich-model-cache:
     name: immich-model-cache
+  immich-data:
+    name: immich-data
+    external: true
+  immich-db:
+    name: immich-db
+    external: true
 
 networks:
   immich:

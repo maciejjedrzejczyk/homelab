@@ -36,9 +36,7 @@ services:
       - "${VAULTWARDEN_HOST_PORT:-17421}:80"
 
     environment:
-      # `_FILE` indirection: the application reads ADMIN_TOKEN from the path
-      # the secret is mounted at, instead of from a plain env variable.
-      ADMIN_TOKEN_FILE: /run/secrets/vaultwarden_admin_token
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
       DOMAIN: ${DOMAIN}
       SIGNUPS_ALLOWED: ${SIGNUPS_ALLOWED:-false}
       INVITATIONS_ALLOWED: ${INVITATIONS_ALLOWED:-false}
@@ -50,9 +48,6 @@ services:
 
     volumes:
       - vaultwarden:/data
-
-    secrets:
-      - vaultwarden_admin_token
 
     healthcheck:
       test:
@@ -89,9 +84,3 @@ networks:
   vaultwarden:
     name: vaultwarden
     external: true
-
-secrets:
-  vaultwarden_admin_token:
-    # The path is resolved relative to this compose.yaml's directory.
-    # See secrets/admin_token.example for how to generate the value.
-    file: ./secrets/admin_token

@@ -15,6 +15,7 @@ services:
       - NET_BIND_SERVICE
       - CHOWN
       - DAC_OVERRIDE
+      - FOWNER
       - SETGID
       - SETUID
       - NET_RAW
@@ -78,6 +79,7 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      - KILL
       - SETGID
       - SETUID
     security_opt:
@@ -87,7 +89,7 @@ services:
       - pihole-unbound
 
     volumes:
-      - ./config:/etc/unbound/custom.conf.d:ro
+      - unbound-config:/etc/unbound/custom.conf.d:ro
 
     # Note: no healthcheck — this is a distroless image with no shell or
     # utility binaries. Unbound's health is verified indirectly: if Pi-hole
@@ -115,6 +117,9 @@ volumes:
     name: pihole-config
   pihole-dnsmasq:
     name: pihole-dnsmasq
+  unbound-config:
+    name: unbound-config
+    external: true
 
 networks:
   pihole-unbound:

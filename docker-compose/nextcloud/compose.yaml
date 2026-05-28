@@ -35,7 +35,10 @@ services:
 
     volumes:
       - nextcloud-config:/config
-      - ${NEXTCLOUD_DATA_PATH:-/srv/nextcloud/data}:/data
+      - nextcloud-data:/data
+      # Alternative: bind mount to host path (requires removing cap_drop or
+      # ensuring host directory is readable by the container user).
+      # - ${NEXTCLOUD_DATA_PATH:-/srv/nextcloud/data}:/data
 
     healthcheck:
       test:
@@ -115,6 +118,9 @@ services:
 volumes:
   nextcloud-config:
     name: nextcloud-config
+    external: true
+  nextcloud-data:
+    name: nextcloud-data
     external: true
   nextcloud-db:
     name: nextcloud-db

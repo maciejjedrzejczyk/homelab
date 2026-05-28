@@ -13,6 +13,13 @@ HOMEPAGE_CONTAINER="homepage-homepage-1"
 MODE="interactive"
 [ "${1:-}" = "--check" ] && MODE="check"
 
+# Helper: copy file into homepage config volume with correct permissions
+copy_to_homepage() {
+  local src="$1"
+  docker run --rm -v homepage:/config -v "${src}:/tmp/services.yaml:ro" \
+    alpine sh -c "cp /tmp/services.yaml /config/services.yaml && chmod 664 /config/services.yaml && chown root:root /config/services.yaml"
+}
+
 # Get services.yaml
 SERVICES_YAML="$(docker exec "$HOMEPAGE_CONTAINER" cat /app/config/services.yaml 2>/dev/null)" || {
   echo "ERROR: cannot read services.yaml from $HOMEPAGE_CONTAINER" >&2
@@ -72,7 +79,7 @@ echo "  Running containers:  $(echo "$RUNNING" | grep -c . || echo 0)"
 if [ -n "$STALE" ]; then
   echo
   printf "Comment out stale entries from services.yaml? [y/N] "
-  read -r ans
+  read -r ans < /dev/tty
   if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
     TMP="$(mktemp)"
     docker exec "$HOMEPAGE_CONTAINER" cat /app/config/services.yaml > "$TMP"
@@ -83,7 +90,7 @@ if [ -n "$STALE" ]; then
       echo "  Commented: $c"
     done
     rm -f "${TMP}.bak"
-    docker cp "$TMP" "$HOMEPAGE_CONTAINER":/app/config/services.yaml
+    copy_to_homepage "$TMP"
     rm -f "$TMP"
     echo "  Done. Homepage will reload automatically."
   fi
@@ -100,13 +107,14 @@ if [ -n "$MISSING" ]; then
     [ -z "$port" ] && { printf "  Skip %s (no exposed port)\n" "$c"; continue; }
 
     printf "  Add '%s' (port %s)? [y/N] " "$c" "$port"
-    read -r ans
+    read -r ans < /dev/tty
     if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
-      # Derive a display name from the container name
-      display="$(echo "$c" | sed 's/-[0-9]*$//; s/.*-//' | sed 's/.*/\u&/')"
+      # Derive a display name from compose service label, fallback to container name
+      svc_label="$(docker inspect "$c" --format '{{index .Config.Labels "com.docker.compose.service"}}' 2>/dev/null)"
+      display="$(echo "${svc_label:-$c}" | sed 's/-[0-9]*$//' | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')"
       # Ask for section
-      printf "    Section name [Intranet]: "
-      read -r section
+      printf "    Section name (press Enter for 'Intranet'): "
+      read -r section < /dev/tty
       [ -z "$section" ] && section="Intranet"
 
       # Build the YAML snippet
@@ -121,16 +129,16 @@ if [ -n "$MISSING" ]; then
       # Append under the matching section
       TMP="$(mktemp)"
       docker exec "$HOMEPAGE_CONTAINER" cat /app/config/services.yaml > "$TMP"
-      # Find the section and append after it
-      if grep -q "^- ${section}:" "$TMP"; then
-        sed -i.bak "/^- ${section}:/a\\
-${SNIPPET}" "$TMP"
+      # Find the section and insert snippet after it
+      if grep -qn "^- ${section}:" "$TMP"; then
+        LINE=$(grep -n "^- ${section}:" "$TMP" | head -1 | cut -d: -f1)
+        { head -n "$LINE" "$TMP"; echo "$SNIPPET"; tail -n +"$((LINE + 1))" "$TMP"; } > "${TMP}.new"
+        mv "${TMP}.new" "$TMP"
       else
         # Section doesn't exist, append at end
         printf "\n- %s:\n%s\n" "$section" "$SNIPPET" >> "$TMP"
       fi
-      rm -f "${TMP}.bak"
-      docker cp "$TMP" "$HOMEPAGE_CONTAINER":/app/config/services.yaml
+      copy_to_homepage "$TMP"
       rm -f "$TMP"
       echo "    Added."
     fi
