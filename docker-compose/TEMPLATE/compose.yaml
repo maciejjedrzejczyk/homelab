@@ -1,0 +1,81 @@
+# <SERVICE_NAME> — <one-line description>.
+# <upstream URL>
+
+name: <service-name>
+
+services:
+  <service-name>:
+    image: <registry>/<image>:<tag>@sha256:<digest>
+
+    restart: unless-stopped
+
+    # Use `init: true` unless the image uses s6-overlay or its own init system.
+    # init: true
+
+    # Hardening — adjust caps based on image requirements.
+    # LinuxServer images need: CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID
+    # Images using tini (init: true) also need: KILL
+    # Remove cap_drop entirely for dev tools (code-server, etc.)
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - <service-name>
+
+    ports:
+      - "${<SERVICE>_PORT:-17XXX}:<container-port>"
+
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+      # PUID: ${PUID:-1000}    # LinuxServer images only
+      # PGID: ${PGID:-1000}    # LinuxServer images only
+
+    volumes:
+      - <service-name>-data:/data
+      # Alternative: bind mount (requires no cap_drop or host path readable
+      # by container user; incompatible with OrbStack virtiofs + cap_drop).
+      # - ${<SERVICE>_DATA_PATH:-/srv/<service-name>}:/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsS http://127.0.0.1:<container-port>/health || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "diun.enable=true"
+
+volumes:
+  <service-name>-data:
+    name: <service-name>-data
+    external: true
+
+networks:
+  <service-name>:
+    name: <service-name>
+    external: true
